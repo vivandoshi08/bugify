@@ -1,4 +1,4 @@
-import { BAZAAR_ADDRESS, SINGLE_VERIFIER_ADDRESS, explorerAddress } from "@bugify/sdk";
+import { BAZAAR_ADDRESS, PLATFORM_ADDRESS, explorerAddress } from "@bugify/sdk";
 import { eth, pct, shortAddr, sumWei, timeAgo } from "@/lib/format";
 import { GLOSSARY } from "@/lib/glossary";
 import type { BountyRow, CommitRow, EventRow } from "@/lib/queries";
@@ -51,8 +51,12 @@ export function StatsStrip({ bounties, commits, events, now }: Props) {
         <span aria-hidden>·</span>
         <span>
           Verifier{" "}
-          <a className="font-mono text-zinc-800 hover:underline dark:text-zinc-200" href={explorerAddress(SINGLE_VERIFIER_ADDRESS)} target="_blank" rel="noreferrer">
-            {shortAddr(SINGLE_VERIFIER_ADDRESS)}
+          <a className="font-mono text-zinc-800 hover:underline dark:text-zinc-200" href={explorerAddress(PLATFORM_ADDRESS)} title="The verifier key. Its attest/finalize transactions land on the Bazaar contract; SingleVerifier is only the registry that authorizes it." target="_blank" rel="noreferrer">
+            {shortAddr(PLATFORM_ADDRESS)}
+          </a>
+          {" "}
+          <a className="text-zinc-500 hover:underline" href={`${explorerAddress(BAZAAR_ADDRESS)}#events`} target="_blank" rel="noreferrer">
+            attestations ↗
           </a>
         </span>
         <span aria-hidden>·</span>
