@@ -166,9 +166,6 @@ export function createApp(deps: Deps) {
     const cid = id(c.req.param("cid"));
     const p = z.object({ transcript: TranscriptSchema, salt: hex32 }).safeParse(await c.req.json().catch(() => null));
     if (!p.success) throw bad(p.error);
-    const received = `commit ${cid}: reveal received (${p.data.transcript.turns.length} turns)`;
-    console.log(`[verifier] ${received}`);
-    sb.insertAgentLog({ agent: "verifier", level: "info", line: received }).catch(() => {});
     return c.json(await verify(BigInt(cid), p.data.transcript as Transcript, p.data.salt as Hex, deps));
   });
 
