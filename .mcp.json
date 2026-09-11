@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "bazaar": {
+      "type": "stdio",
+      "command": "bun",
+      "args": [
+        "run",
+        "/Users/vivandoshi/Documents/bugify/apps/agents/src/mcp.ts"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -25,6 +25,8 @@ const schema = z.object({
   INDEXER_INTERVAL_MS: num(4000),
   SETTLER_INTERVAL_MS: num(20000),
   INDEXER_START_BLOCK: z.preprocess(emptyToUndef, z.coerce.bigint().optional()),
+  /** Demo only: serve GET /commits/:cid/finding (transcript + traces) without a buyer signature. */
+  DEMO_PUBLIC_FINDINGS: z.preprocess(emptyToUndef, z.string().default("false")).transform((s) => /^(1|true|yes|on)$/i.test(s)),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -18,6 +18,7 @@ Copy `.env.example` to `.env` (this file is read via `dotenv`; never commit it).
 | `DISPUTE_WINDOW`, `REVEAL_TIMEOUT` | seconds; must match the contract timings |
 | `K` | replays per verification |
 | `INDEXER_INTERVAL_MS`, `SETTLER_INTERVAL_MS`, `INDEXER_START_BLOCK` | loops |
+| `DEMO_PUBLIC_FINDINGS` | demo only (default `false`): serve `GET /commits/:cid/finding` to anyone. Never in production — findings are buyer-private. |
 
 ## Run
 
@@ -42,6 +43,9 @@ Log lines are prefixed per subsystem: `[indexer] BountyPosted #1 …`, `[verifie
 | POST | `/commits/:cid/reveal` | `{ transcript, salt }` → `{ outcome, hits, breaksControl, attestTx }` (blocks until attested) |
 | GET | `/bounties/:id/findings` | headers `X-Address`, `X-Signature` over `bazaar:findings:<id>:<unixMinute>` (current or previous minute); address must be the bounty's buyer → `Finding[]` |
 | GET | `/health` | `{ chain, lastIndexedBlock, verifier, bazaar, model }` |
+| GET | `/commits/:cid/finding` | **demo only** (`DEMO_PUBLIC_FINDINGS=true`, else 404): the finding behind one commit — transcript, traces, per-replay `evaluations`, invariant `label`/`summary`/`spec` (canary text omitted) |
+
+Public verification record: every attest also writes `commits.verification` (anon-readable, no secrets): `{ k, hits, replays: [{ hit, toolCalls (names only), turns, evidence (args redacted) }], breaksControl, control?: { hits } }`, or `{ reason: "commitment mismatch" | "reveal timeout" | … }` when the verifier attested FAIL without replaying. `POST /manifests` also stores `manifests.invariant_summaries` (one plain-English sentence per invariant, canary never included), exposed through `public_bounties`. CORS: any origin may `GET`; `POST` only from `http://localhost:3000`.
 
 Auth in v1: only `/findings` checks a signature. Practice turns are rate-limited per IP (60 / 10 min, in memory). Everything else is open. Errors are `{ error }` with a proper status code.
 

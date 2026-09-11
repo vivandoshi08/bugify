@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseEther } from "viem";
-import { buildCommitment, buildTranscript, findingsMessage, totalValueWei } from "../src/bazaar.ts";
+import { buildCommitment, buildTranscript, disputeSide, findingsMessage, totalValueWei } from "../src/bazaar.ts";
+import { outcomeIndex } from "../src/types.ts";
 import { commitment, contentHash } from "../src/hash.ts";
 
 const MH = `0x${"ab".repeat(32)}` as const;
@@ -41,5 +42,23 @@ describe("findingsMessage", () => {
   test("uses the minute bucket", () => {
     expect(findingsMessage(7, 123)).toBe("bazaar:findings:7:123");
     expect(findingsMessage(7n)).toBe(`bazaar:findings:7:${Math.floor(Date.now() / 60000)}`);
+  });
+});
+
+describe("disputeSide", () => {
+  test("buyer may dispute PASS, seller may dispute FAIL (numeric enum from getCommit)", () => {
+    expect(disputeSide({ outcome: outcomeIndex("PASS") })).toBe("buyer");
+    expect(disputeSide({ outcome: outcomeIndex("FAIL") })).toBe("seller");
+  });
+  test("accepts outcome names", () => {
+    expect(disputeSide({ outcome: "PASS" })).toBe("buyer");
+    expect(disputeSide({ outcome: "FAIL" })).toBe("seller");
+  });
+  test("nothing else is disputable", () => {
+    for (const o of ["NONE", "PASS_NO_SLOT", "VOID", "RECLAIMED"] as const) {
+      expect(disputeSide({ outcome: o })).toBeNull();
+      expect(disputeSide({ outcome: outcomeIndex(o) })).toBeNull();
+    }
+    expect(disputeSide({ outcome: 99 })).toBeNull();
   });
 });

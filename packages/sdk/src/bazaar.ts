@@ -13,7 +13,7 @@ import { baseSepolia } from "viem/chains";
 import { bazaarAbi } from "./abi.ts";
 import { BAZAAR_ADDRESS } from "./config.ts";
 import { commitment, contentHash, manifestHash, randomSalt, ZERO_HASH } from "./hash.ts";
-import { outcomeName, type Finding, type Hex, type Manifest, type Outcome, type PublicBounty, type ToolCall, type Transcript } from "./types.ts";
+import { outcomeIndex, outcomeName, type Finding, type Hex, type Manifest, type Outcome, type PublicBounty, type ToolCall, type Transcript } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested, no network)
@@ -45,6 +45,19 @@ export function buildCommitment(t: Transcript, salt: Hex = randomSalt()): { salt
 
 export const findingsMessage = (bountyId: number | bigint, minute = Math.floor(Date.now() / 60000)) =>
   `bazaar:findings:${bountyId}:${minute}`;
+
+export type DisputeOutcome = Extract<Outcome, "PASS" | "FAIL">;
+
+/**
+ * Who may call `dispute` on a commit, per IBazaar: the buyer on a PASS, the seller on a FAIL, nobody otherwise
+ * (PASS_NO_SLOT, VOID, NONE, RECLAIMED are not disputable). Accepts the numeric enum from `getCommit` or a name.
+ */
+export function disputeSide(commit: { outcome: number | Outcome }): "buyer" | "seller" | null {
+  const o = typeof commit.outcome === "number" ? outcomeName(commit.outcome) : commit.outcome;
+  if (o === "PASS") return "buyer";
+  if (o === "FAIL") return "seller";
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,6 +113,9 @@ export type OnChainCommit = {
 export type TurnResult = { assistant: string; toolCalls: ToolCall[]; violations: number[] };
 export type RevealResult = { outcome: Outcome; hits: number; breaksControl: boolean; attestTx: Hex };
 export type SubmitResult = RevealResult & { commitId: bigint; commitTx: Hex; transcript: Transcript; salt: Hex };
+export type DisputeResult = { txHash: Hex; bondWei: bigint };
+export type ResolveResult = { txHash: Hex; outcome: Outcome; changed: boolean };
+export type FinalizeResult = { txHash: Hex; paidWei: bigint };
 
 export type Bazaar = ReturnType<typeof createBazaar>;
 
@@ -224,6 +240,44 @@ export function createBazaar(opts: BazaarOptions) {
       const { hash, receipt } = await write("finalize", [BigInt(commitId)]);
       const { paidToSeller } = eventArgs<{ paidToSeller: bigint }>(receipt.logs, "Finalized");
       return { finalizeTx: hash, paidWei: paidToSeller };
+    },
+
+    // --- disputes (docs/CONTRACTS.md §4 dispute / resolve / finalize) ---
+
+    /** Contract config reads used by the dispute scripts. */
+    disputeBond: () => read<bigint>("disputeBond"),
+    disputeWindow: () => read<bigint>("disputeWindow"),
+    arbiter: () => read<Address>("arbiter"),
+    commitCount: () => read<bigint>("commitCount"),
+
+    /**
+     * Open a dispute on an attested commit. Caller must be the bounty's buyer (outcome PASS) or the commit's
+     * seller (outcome FAIL) and inside the dispute window. Sends exactly `disputeBond()` as the bond.
+     */
+    async dispute(commitId: number | bigint): Promise<DisputeResult> {
+      const bond = await read<bigint>("disputeBond");
+      const { hash, receipt } = await write("dispute", [BigInt(commitId)], bond);
+      const { bond: bondWei } = eventArgs<{ disputer: Address; bond: bigint }>(receipt.logs, "Disputed");
+      return { txHash: hash, bondWei };
+    },
+
+    /** Arbiter only: rule on an OPEN dispute. `changed` is true when the stored outcome flipped. */
+    async resolve(commitId: number | bigint, outcome: DisputeOutcome): Promise<ResolveResult> {
+      if (outcome !== "PASS" && outcome !== "FAIL") throw new Error(`resolve outcome must be PASS or FAIL, got ${outcome}`);
+      const { hash, receipt } = await write("resolve", [BigInt(commitId), outcomeIndex(outcome)]);
+      const ev = eventArgs<{ outcome: number; changed: boolean }>(receipt.logs, "Resolved");
+      return { txHash: hash, outcome: outcomeName(Number(ev.outcome)), changed: ev.changed };
+    },
+
+    /**
+     * Finalize without waiting. Use after a dispute is RESOLVED (finalize is allowed immediately then) or once
+     * the window has elapsed; otherwise the contract reverts with WindowOpen / DisputeOpen. See `settle` for the
+     * polling variant.
+     */
+    async finalize(commitId: number | bigint): Promise<FinalizeResult> {
+      const { hash, receipt } = await write("finalize", [BigInt(commitId)]);
+      const { paidToSeller } = eventArgs<{ paidToSeller: bigint }>(receipt.logs, "Finalized");
+      return { txHash: hash, paidWei: paidToSeller };
     },
 
     async getFindings(bountyId: number | bigint): Promise<Finding[]> {
