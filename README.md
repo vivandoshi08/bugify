@@ -25,6 +25,59 @@ We flip it. The buyer commits money to an **outcome** first, not to a seller's c
 4. **Settle.** After a dispute window anyone calls `finalize`. PASS pays reward + bond back. FAIL slashes the
    bond to the treasury. The buyer never gets a see-then-decide step.
 
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Agents["Agents (laptop · Claude)"]
+    B["Builder agent<br/>Sonnet 5 · BUYER_KEY<br/>post → findings → patch → regression → repost"]
+    F["Finder agent<br/>Sonnet 5 · SELLER_KEY<br/>practice → commit → reveal → settle"]
+    M["MCP server<br/>buyer + seller tools for Claude Code"]
+  end
+
+  subgraph Server["Server (Hono on Bun · platform key)"]
+    API["API<br/>/manifests · /sessions · /commits/:id/reveal · /findings"]
+    H["Harness<br/>runSession · mock registry · trace predicates"]
+    V["Verifier<br/>hash check → FIFO → replay ×k → attest"]
+    IX["Indexer + settler<br/>getLogs → Supabase · finalize after window"]
+  end
+
+  subgraph Chain["Base Sepolia"]
+    BZ["Bazaar<br/>escrow · commits · attest · disputes · settle"]
+    SV["SingleVerifier<br/>canAttest(platform)"]
+  end
+
+  subgraph Data["Supabase"]
+    PUB["public: bounties · commits · events · agent_logs"]
+    PRIV["private: manifests · findings (service key only)"]
+  end
+
+  W["Board (Vercel / local)<br/>ledger · verification records · consoles · /northwind"]
+  AN["Anthropic API<br/>targets on Haiku 4.5, tool use"]
+
+  B -- "postBounty · getFindings (signed)" --> API
+  B -- "postBounty · expire" --> BZ
+  F -- "sessions · reveal" --> API
+  F -- "commit · finalize" --> BZ
+  M --> API & BZ
+  API --> H
+  API --> V
+  H -- "messages.create" --> AN
+  V -- "replay ×k" --> H
+  V -- "attest / voidBounty" --> BZ
+  BZ -. "canAttest()" .-> SV
+  IX -- "getLogs every 4 s" --> BZ
+  IX --> PUB
+  V --> PRIV
+  API --> PRIV
+  PUB -- "anon key + Realtime" --> W
+  B & F -- "log lines" --> API --> PUB
+```
+
+Rules the diagram encodes: the contract never calls out; the chain holds only hashes and money; the system
+prompt, transcripts and traces live in the private tables and reach a browser only through the buyer-signed
+findings route (or the labelled demo mode).
+
 ## Trust assumptions (v1, stated plainly)
 
 - One platform key is verifier, arbiter and treasury. The verifier sees every manifest and every exploit before
@@ -62,6 +115,69 @@ commits, reveals and settles on PASS. Targets run on Haiku 4.5 with real tool us
 streams to the board live, next to the verifier's step-by-step log.
 
 ## Contract design: how we chose the edge cases
+
+### The contract system
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Buyer
+  participant Bazaar
+  participant Seller
+  participant Verifier
+  Buyer->>Bazaar: postBounty(manifestHash, rewards[], slots[], expiry, minBond, k, tier) + ETH
+  Note over Bazaar: escrow = Σ reward·slots · status OPEN
+  Seller->>Bazaar: commit(bountyId, inv, keccak(contentHash ‖ salt)) + bond
+  Note over Bazaar: seq assigned per invariant (FIFO) · pending++
+  Seller->>Verifier: reveal transcript + salt (off-chain)
+  Verifier->>Verifier: recompute commitment · replay ×k · evaluate trace predicate
+  Verifier->>Bazaar: attest(commitId, PASS|FAIL|VOID, hits, breaksControl, contentHash, salt, traceHash)
+  Note over Bazaar: requires seq == cursor · PASS requires commitment match · takes a slot or PASS_NO_SLOT
+  opt dispute window
+    Buyer-->>Bazaar: dispute(commitId) + bond  (buyer on PASS, seller on FAIL)
+    Verifier-->>Bazaar: resolve(commitId, PASS|FAIL)  (arbiter)
+  end
+  Seller->>Bazaar: finalize(commitId)  (anyone, after window or resolve)
+  Note over Bazaar: PASS → reward·tier + bond to seller · FAIL → bond to treasury · VOID/NO_SLOT → bond back
+  Buyer->>Bazaar: expire(bountyId)  (after expiry or VOIDED, pending == 0)
+  Note over Bazaar: refund remaining escrow · status CLOSED
+```
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  state "Commit" as C {
+    [*] --> NONE: commit (bond)
+    NONE --> PASS: attest PASS, slot free
+    NONE --> PASS_NO_SLOT: attest PASS, slots full
+    NONE --> FAIL: attest FAIL / reveal timeout
+    NONE --> VOID: attest VOID
+    NONE --> RECLAIMED: reclaimBond (timeout or VOIDED, in FIFO order)
+    PASS --> FAIL: resolve (buyer dispute upheld)
+    FAIL --> PASS: resolve (seller dispute upheld)
+    PASS --> [*]: finalize → reward + bond
+    PASS_NO_SLOT --> [*]: finalize → bond
+    VOID --> [*]: finalize → bond
+    FAIL --> [*]: finalize → bond slashed
+  }
+```
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  state "Bounty" as Bo {
+    [*] --> OPEN: postBounty (escrow)
+    OPEN --> OPEN: cancel → expiry = min(expiry, now + grace)
+    OPEN --> VOIDED: voidBounty (verifier)
+    OPEN --> CLOSED: expire (now ≥ expiry ∧ pending == 0)
+    VOIDED --> CLOSED: expire (pending == 0)
+    CLOSED --> [*]: escrow refunded
+  }
+```
+
+Invariants held by the Foundry invariant suite: `balance == Σ escrow + Σ unfinalized bonds + Σ open dispute
+bonds + Σ owed`; `slotsUsed ≤ slots`; `cursor ≤ commitCount` and every commit with `seq < cursor` is attested;
+`pending == count(!finalized)`; `CLOSED ⇒ escrow == 0 ∧ pending == 0`; `paidToSeller ≤ reward`.
 
 We wrote the spec as a list of ~30 numbered failure cases first, then built the contract to make each one
 either impossible or explicitly accepted. Highlights:
