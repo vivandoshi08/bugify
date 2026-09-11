@@ -1,0 +1,22 @@
+{
+  "name": "agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "buyer": "bun run src/buyer.ts",
+    "seller": "bun run src/seller.ts",
+    "seller-mimic": "bun run src/seller-mimic.ts",
+    "fund": "bun run src/fund.ts"
+  },
+  "dependencies": {
+    "@bugify/sdk": "workspace:*",
+    "dotenv": "^17.2.1",
+    "viem": "2.56.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.14",
+    "typescript": "^5"
+  }
+}
