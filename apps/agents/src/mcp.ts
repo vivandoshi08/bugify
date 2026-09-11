@@ -29,10 +29,17 @@ const { createBazaar, explorerAddress, explorerTx, DEMO, totalValueWei } = await
 const agentsDir = resolve(import.meta.dir, "..");
 const DEFAULT_MANIFEST = "manifests/northwind.json";
 
-// Built lazily so tools/list works (and a clear error surfaces per call) even when BUYER_KEY is missing.
+// Built lazily so tools/list works (and a clear error surfaces per call) even when a key is missing.
+// Buyer tools use BUYER_KEY; seller tools use SELLER_KEY. A single-wallet joiner can set just one and it
+// falls back to the other, so one key can play both sides.
 let bz: Bazaar | undefined;
+let sz: Bazaar | undefined;
+const key = (primary: "BUYER_KEY" | "SELLER_KEY", fallback: "BUYER_KEY" | "SELLER_KEY") =>
+  process.env[primary] ? requireKey(primary) : requireKey(fallback);
 const client = () =>
-  (bz ??= createBazaar({ rpcUrl: RPC_URL, privateKey: requireKey("BUYER_KEY"), bazaarAddress: BAZAAR_ADDRESS, serverUrl: SERVER_URL }));
+  (bz ??= createBazaar({ rpcUrl: RPC_URL, privateKey: key("BUYER_KEY", "SELLER_KEY"), bazaarAddress: BAZAAR_ADDRESS, serverUrl: SERVER_URL }));
+const seller = () =>
+  (sz ??= createBazaar({ rpcUrl: RPC_URL, privateKey: key("SELLER_KEY", "BUYER_KEY"), bazaarAddress: BAZAAR_ADDRESS, serverUrl: SERVER_URL }));
 
 function readManifest(path: string): Manifest {
   const file = resolve(agentsDir, path); // absolute paths pass through resolve unchanged
@@ -206,6 +213,85 @@ server.registerTool(
   guarded("balance", async () => {
     const c = client();
     return `buyer ${c.address}  ${await c.balance()} ETH\n${explorerAddress(c.address)}`;
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Seller tools: hunt bugs and get paid. Use SELLER_KEY (falls back to BUYER_KEY).
+// ---------------------------------------------------------------------------
+
+const turnsSchema = z.array(z.string().min(1)).min(1).describe("The attacker's user turns, in order, one string per turn");
+
+server.registerTool(
+  "practice_attack",
+  {
+    title: "Practice an attack (no chain, no bond)",
+    description:
+      "Replay a sequence of user turns against a bounty's target agent in the sandbox and see, per turn, the assistant reply, the tool calls it made, and which invariant indices were violated. Free and off-chain — use it to refine an attack before you stake a bond with submit_finding.",
+    inputSchema: { bountyId: bountyIdSchema, turns: turnsSchema },
+  },
+  guarded("practice_attack", async ({ bountyId, turns }: { bountyId: number; turns: string[] }) => {
+    const session = await seller().openSession(bountyId);
+    const lines: string[] = [`session on bounty #${bountyId}`];
+    let lastViolations: number[] = [];
+    for (const [i, text] of turns.entries()) {
+      const r = await session.say(text);
+      lastViolations = r.violations;
+      lines.push(`\n— turn ${i + 1}`);
+      lines.push(`  you: ${text}`);
+      for (const tc of r.toolCalls) lines.push(`  tool ${tc.name}(${compact(tc.input, 80)}) → ${compact(tc.result, 80)}`);
+      lines.push(`  agent: ${r.assistant.replace(/\s+/g, " ").slice(0, 240)}`);
+      lines.push(`  violations: [${r.violations.join(", ")}]`);
+    }
+    lines.push(lastViolations.length ? `\n✔ violated invariant(s) [${lastViolations.join(", ")}] — submit_finding on one of these to sell it` : "\nno invariant violated yet — refine the turns and try again");
+    return lines.join("\n");
+  }),
+);
+
+server.registerTool(
+  "submit_finding",
+  {
+    title: "Submit a finding (stake bond, commit, reveal)",
+    description:
+      "Stake the bounty's bond, commit hash(transcript+salt) on chain, and reveal the transcript to the verifier, which replays it against the pinned agent and attests PASS/FAIL. On PASS the finding is escrowed for you; call settle after the dispute window to collect the reward. Costs the bond (returned on PASS/PASS_NO_SLOT, slashed on FAIL). Practice first.",
+    inputSchema: {
+      bountyId: bountyIdSchema,
+      invariant: z.number().int().nonnegative().describe("Index of the invariant this attack breaks (0-based)"),
+      turns: turnsSchema,
+    },
+  },
+  guarded("submit_finding", async ({ bountyId, invariant, turns }: { bountyId: number; invariant: number; turns: string[] }) => {
+    const r = await seller().submitFinding(bountyId, invariant, turns);
+    const tier = r.breaksControl ? " (breaksControl → lower tier)" : "";
+    const next = r.outcome === "PASS" ? `\nnext: settle({ commitId: ${r.commitId} }) after the dispute window to collect` : r.outcome === "FAIL" ? "\nFAIL: the replay did not violate the invariant; bond will be slashed to the treasury at finalize" : "";
+    return `commit #${r.commitId} bounty #${bountyId} inv ${invariant}\ncommit tx  ${explorerTx(r.commitTx)}\noutcome ${r.outcome}  hits ${r.hits}/3${tier}\nattest tx  ${explorerTx(r.attestTx)}${next}`;
+  }),
+);
+
+server.registerTool(
+  "settle",
+  {
+    title: "Settle a finding (collect the reward)",
+    description:
+      "After the dispute window has elapsed on a PASS commit, finalize it: the reward leaves escrow to the seller and the bond is returned. Anyone may call this; the seller normally does. Returns the finalize tx and the amount paid.",
+    inputSchema: { commitId: z.number().int().nonnegative().describe("Commit id from submit_finding") },
+  },
+  guarded("settle", async ({ commitId }: { commitId: number }) => {
+    const r = await seller().settle(commitId);
+    return `commit #${commitId} finalized\nfinalize tx ${explorerTx(r.finalizeTx)}\npaid ${formatEther(r.paidWei)} ETH reward (+ bond returned)`;
+  }),
+);
+
+server.registerTool(
+  "seller_balance",
+  {
+    title: "Seller balance",
+    description: "The seller wallet (SELLER_KEY) address and its ETH balance on Base Sepolia.",
+    inputSchema: {},
+  },
+  guarded("seller_balance", async () => {
+    const c = seller();
+    return `seller ${c.address}  ${await c.balance()} ETH\n${explorerAddress(c.address)}`;
   }),
 );
 

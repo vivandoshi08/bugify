@@ -20,7 +20,7 @@ Demo amounts are scaled by `BUGIFY_DEMO_SCALE` in `apps/agents/.env`.
 pnpm demo
 ```
 
-Boots server (:8787), board (:3000), builder agent, finder agent; tails all logs. `pnpm demo:stop` ends it.
+Boots server (:8787), board (:3000), a Cloudflare quick tunnel (prints the public server URL for external agents; also saved to `.demo/tunnel.url`), builder agent, finder agent; tails all logs. `pnpm demo:stop` ends it.
 Open two browser windows: `http://localhost:3000` (board + consoles) and `http://localhost:3000/northwind`
 (deployer's view).
 
