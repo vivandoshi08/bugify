@@ -53,7 +53,8 @@ start() {
   fi
   run builder "$ROOT/apps/agents" bun run src/buyer-agent.ts --interval "${BUILDER_INTERVAL:-20}"
   sleep 8   # let the builder post before the finder scans
-  run finder  "$ROOT/apps/agents" bun run src/seller-agent.ts --interval "${FINDER_INTERVAL:-20}" --max-turns "${FINDER_TURNS:-6}"
+  # FINDER_ARGS e.g. "--bounty 6,9" to focus the recording on specific bounties
+  run finder  "$ROOT/apps/agents" bun run src/seller-agent.ts --interval "${FINDER_INTERVAL:-20}" --max-turns "${FINDER_TURNS:-6}" ${FINDER_ARGS:-}
   echo
   echo "board    http://localhost:3000"
   echo "deployer http://localhost:3000/northwind"

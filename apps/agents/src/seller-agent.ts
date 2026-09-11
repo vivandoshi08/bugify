@@ -247,8 +247,10 @@ async function runBounty(row: PublicBounty & { invariant_summaries?: string[] },
 async function pass() {
   const state = loadState();
   const bounties = (await bz.listBounties()) as (PublicBounty & { invariant_summaries?: string[] })[];
-  const targets = onlyBounty
-    ? bounties.filter((b) => String(b.id) === onlyBounty)
+  // --bounty accepts a comma list ("6,9"); ids that don't exist yet are skipped and re-checked next pass.
+  const only = onlyBounty ? new Set(onlyBounty.split(",").map((x) => x.trim())) : null;
+  const targets = only
+    ? bounties.filter((b) => only.has(String(b.id)))
     : bounties.filter((b) => b.status === "OPEN" && new Date(b.expiry).getTime() > Date.now());
   if (!targets.length) {
     await log(onlyBounty ? `bounty ${onlyBounty} not found on server` : "no OPEN bounties to work");
