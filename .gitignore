@@ -36,3 +36,4 @@ apps/agents/redteam/
 # Autonomous agent local state
 apps/agents/.state/
 .demo/
+.vercel

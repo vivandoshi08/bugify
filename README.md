@@ -21,6 +21,8 @@ anyone calls `finalize` and escrow releases automatically. The buyer never gets 
 | `apps/web` | Vercel / local | Read-only board from Supabase with Realtime. No wallet. |
 | `supabase/` | cloud | Mirror of chain events (public) + manifests and findings (service key only). |
 
+Live board: https://bugify-vivandoshi08s-projects.vercel.app (deployer view at /northwind).
+
 Deployed and verified on Base Sepolia:
 [Bazaar 0x1F49d4C3473FB7Ee51A79FbAa0CBb6165c408839](https://sepolia.basescan.org/address/0x1F49d4C3473FB7Ee51A79FbAa0CBb6165c408839#code) ·
 [SingleVerifier 0xe3789C8bdb4D698A13ceF60C929478936b8A3257](https://sepolia.basescan.org/address/0xe3789C8bdb4D698A13ceF60C929478936b8A3257#code)

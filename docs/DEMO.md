@@ -14,6 +14,13 @@ Wallets (Base Sepolia): platform = verifier/arbiter/treasury `0x3Df07C2884655Bef
 buyer `0x6FB07aa17df60c8950B5DA74bEEf9b5446a5E655`, seller `0x8D6178092A9a1B9223d9678359181Ef0eDd7f626`.
 Demo amounts are scaled by `BUGIFY_DEMO_SCALE` in `apps/agents/.env`.
 
+## Public URLs
+
+- Board: https://bugify-vivandoshi08s-projects.vercel.app (Vercel, reads Supabase directly)
+- Verifier API: the Cloudflare tunnel URL printed by `pnpm demo` (also `.demo/tunnel.url`). The Vercel build bakes
+  `NEXT_PUBLIC_SERVER_URL` for the "Show exchange" viewer; if the tunnel URL changes, redeploy with
+  `pnpm dlx vercel deploy --prod --yes --build-env NEXT_PUBLIC_SERVER_URL=<url> ...` (see vercel.json).
+
 ## Start
 
 ```bash
