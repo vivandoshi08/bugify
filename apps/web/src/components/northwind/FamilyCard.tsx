@@ -17,11 +17,17 @@ function Regression({ n }: { n: number }) {
 
 function VersionBlock({ v, now, latest }: { v: Version; now: number; latest: boolean }) {
   const b = v.bounty;
+  const closed = b.status === "CLOSED";
   return (
-    <div className={`rounded border border-zinc-200 dark:border-zinc-800 ${latest ? "" : "opacity-80"}`}>
+    <div className={`rounded border border-zinc-200 dark:border-zinc-800 ${closed ? "opacity-50" : latest ? "" : "opacity-80"}`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950/60">
         <span className="font-semibold text-zinc-900 dark:text-zinc-50">{v.pr != null ? `PR #${v.pr}` : b.name}</span>
         {latest && <span className="rounded bg-zinc-200/80 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">latest</span>}
+        {closed && (
+          <span className="rounded border border-zinc-300 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-zinc-500 dark:border-zinc-700" title="This bounty is closed; no new commits are accepted">
+            closed
+          </span>
+        )}
         {v.patched && (
           <span className="rounded border border-sky-500/50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-sky-700 dark:text-sky-400" title="Newer than a build the Bazaar already broke">
             patched
@@ -98,8 +104,8 @@ export function FamilyCard({ family, now }: { family: Family; now: number }) {
         </div>
       </header>
       <div className="flex flex-col gap-2">
-        {family.versions.map((v, i) => (
-          <VersionBlock key={v.bounty.id} v={v} now={now} latest={i === 0} />
+        {family.versions.map((v) => (
+          <VersionBlock key={v.bounty.id} v={v} now={now} latest={v === family.latest} />
         ))}
       </div>
     </article>

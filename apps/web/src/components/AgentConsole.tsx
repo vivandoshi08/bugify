@@ -5,10 +5,11 @@ import { explorerTx } from "@bugify/sdk";
 import { supabase } from "@/lib/supabase";
 import { AGENT_LOG_LIMIT, fetchAgentLogs, type AgentLogRow, type AgentName } from "@/lib/queries";
 
-const PANES: Array<{ agent: AgentName; title: string }> = [
-  { agent: "buyer", title: "Builder agent (buyer)" },
-  { agent: "seller", title: "Finder agent (seller)" },
-  { agent: "verifier", title: "Verifier" },
+// Each pane gets a colored left edge so the three are tellable apart from across a room.
+const PANES: Array<{ agent: AgentName; title: string; accent: string }> = [
+  { agent: "buyer", title: "Builder agent (buyer)", accent: "border-l-sky-500" },
+  { agent: "seller", title: "Finder agent (seller)", accent: "border-l-emerald-500" },
+  { agent: "verifier", title: "Verifier", accent: "border-l-violet-500" },
 ];
 const POLL_MS = 3000;
 type Lines = Record<AgentName, AgentLogRow[]>;
@@ -53,7 +54,7 @@ function clock(iso: string): string {
   return d.toLocaleTimeString(undefined, { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function Pane({ title, lines }: { title: string; lines: AgentLogRow[] }) {
+function Pane({ title, lines, accent }: { title: string; lines: AgentLogRow[]; accent: string }) {
   const ref = useRef<HTMLDivElement>(null);
   // Autoscroll to the newest line (bottom) whenever the list changes.
   useEffect(() => {
@@ -61,12 +62,12 @@ function Pane({ title, lines }: { title: string; lines: AgentLogRow[] }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines]);
   return (
-    <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-950 dark:border-zinc-800">
+    <section className={`flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-200 border-l-[3px] bg-zinc-950 dark:border-zinc-800 ${accent}`}>
       <header className="flex items-center justify-between border-b border-zinc-800 px-3 py-1.5">
-        <h3 className="font-mono text-[11px] uppercase tracking-wider text-zinc-400">{title}</h3>
-        <span className="font-mono text-[10px] tabular-nums text-zinc-600">{lines.length} lines</span>
+        <h3 className="font-mono text-xs uppercase tracking-wider text-zinc-400">{title}</h3>
+        <span className="font-mono text-[11px] tabular-nums text-zinc-600">{lines.length} lines</span>
       </header>
-      <div ref={ref} className="h-56 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed">
+      <div ref={ref} className="h-80 overflow-y-auto px-3 py-2 font-mono text-[13px] leading-relaxed">
         {lines.length === 0 ? (
           <p className="text-zinc-600">no activity yet</p>
         ) : (
@@ -140,7 +141,7 @@ export function AgentConsole() {
       </div>
       <div className="flex flex-col gap-3 md:flex-row">
         {PANES.map((p) => (
-          <Pane key={p.agent} title={p.title} lines={lines[p.agent]} />
+          <Pane key={p.agent} title={p.title} lines={lines[p.agent]} accent={p.accent} />
         ))}
       </div>
     </div>

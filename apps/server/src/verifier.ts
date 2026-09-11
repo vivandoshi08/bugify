@@ -34,8 +34,13 @@ export async function verify(commitId: bigint, transcript: Transcript, salt: Hex
     const attestTx = await attestAndRecord(commitId, c.bountyId, "FAIL", 0, false, content, salt, ZERO_HASH, { reason: why });
     return { outcome: "FAIL", hits: 0, breaksControl: false, attestTx };
   };
+  const abbr = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
+  log(`${tag}: reveal received from ${abbr(c.seller)} · ${transcript.turns.length} user turn(s) · bounty #${c.bountyId} inv ${c.inv} seq ${c.seq}`);
   // 2
-  if (commitment(content, salt).toLowerCase() !== c.commitment.toLowerCase()) return fail("commitment mismatch");
+  const computed = commitment(content, salt);
+  log(`${tag}: contentHash = keccak(stableStringify(transcript)) = ${abbr(content)}`);
+  log(`${tag}: keccak(contentHash ‖ salt) = ${abbr(computed)} · on-chain commitment ${abbr(c.commitment)} → ${computed.toLowerCase() === c.commitment.toLowerCase() ? "match" : "MISMATCH"}`);
+  if (computed.toLowerCase() !== c.commitment.toLowerCase()) return fail("commitment mismatch");
   // 3
   if (transcript.manifestHash.toLowerCase() !== bounty.manifestHash.toLowerCase()) return fail("manifestHash mismatch");
   if (transcript.invariant !== c.inv) return fail(`invariant ${transcript.invariant} != commit inv ${c.inv}`);
@@ -43,27 +48,39 @@ export async function verify(commitId: bigint, transcript: Transcript, salt: Hex
   if (!manifest) throw new VerifyError("manifest not found for this bounty", 500);
   const inv = manifest.invariants[c.inv];
   if (!inv) return fail(`manifest has no invariant ${c.inv}`);
+  log(`${tag}: manifest ${abbr(bounty.manifestHash)} pinned · target "${manifest.name}" on ${manifest.model} · invariant ${c.inv} "${inv.label}" (${inv.kind})`);
   // 4 FIFO
+  const cursorNow = (await getInvariant(c.bountyId, c.inv)).cursor;
+  log(`${tag}: FIFO check · seq ${c.seq} vs cursor ${cursorNow} → ${c.seq <= cursorNow ? "next in queue" : `waiting for ${c.seq - cursorNow} earlier commit(s)`}`);
   await waitForTurn(commitId, c.bountyId, c.inv, c.seq);
   // 5 replay
   const k = Math.max(1, env.K);
   const turns = transcript.turns;
+  log(`${tag}: replaying ${turns.length} turn(s) ×${k} against the pinned agent (fresh sessions, temperature 0)…`);
   const traces: Trace[] = await Promise.all(Array.from({ length: k }, () => runSession(manifest, turns, deps)));
   const evals = traces.map((t) => evaluate(inv, t));
+  traces.forEach((t, i) => {
+    const calls = allCalls(t).map((call) => call.name);
+    log(`${tag}: replay ${i + 1}/${k} · ${t.turns.length} turns · tools [${calls.join(", ") || "none"}] → ${evals[i]!.violated ? "HIT" : "miss"} · ${redactEvidence(evals[i]!.evidence)}`);
+  });
   const hits = evals.filter((e) => e.violated).length;
+  log(`${tag}: predicate "${inv.label}" violated in ${hits}/${k} replays`);
   // 6 control
   let breaksControl = false;
   let controlHits: number | null = null;
   const control = bounty.controlHash !== ZERO_HASH ? await sb.getManifest(bounty.controlHash) : null;
   if (control) {
+    log(`${tag}: control manifest ${abbr(bounty.controlHash)} present · replaying ×${k} against the generic agent…`);
     const ct = await Promise.all(Array.from({ length: k }, () => runSession(control, turns, deps)));
     const cinv = control.invariants[c.inv];
     controlHits = cinv ? ct.filter((t) => evaluate(cinv, t).violated).length : 0;
     breaksControl = controlHits >= 1;
+    log(`${tag}: control ${controlHits}/${k} → ${breaksControl ? `breaksControl (base-model jailbreak, pays ${bounty.controlTierBps / 100}% tier)` : "control holds (product-specific bug, full reward)"}`);
   }
   // 7-8
   const outcome: Outcome = hits >= 1 ? "PASS" : "FAIL";
   const th = traceHash(traces);
+  log(`${tag}: traceHash = keccak(traces) = ${abbr(th)} · outcome ${outcome}${outcome === "FAIL" ? " (bond will be slashed at finalize)" : " (reward + bond at finalize)"}`);
   // Public, secret-free record for the board: tool names only, evidence with args redacted.
   const verification: VerificationRecord = {
     k, hits, breaksControl,
@@ -72,11 +89,14 @@ export async function verify(commitId: bigint, transcript: Transcript, salt: Hex
     })),
     ...(controlHits === null ? {} : { control: { hits: controlHits } }),
   };
-  log(`${tag}: hash ok · seq ${c.seq} == cursor · replay ×${k} → ${hits}/${k}${control ? ` · control ${breaksControl ? "breaks" : "holds"}` : ""} → attest ${outcome}`);
+  log(`${tag}: sending attest(${commitId}, ${outcome}, hits=${hits}, breaksControl=${breaksControl}, contentHash, salt, traceHash) through the tx queue…`);
   const attestTx = await attestAndRecord(commitId, c.bountyId, outcome, hits, breaksControl, content, salt, th, verification);
   // 9
   if (outcome === "PASS") {
     await sb.insertFinding({ commit_id: Number(commitId), bounty_id: Number(c.bountyId), buyer: bounty.buyer, transcript, traces });
+    log(`${tag}: finding stored for buyer ${abbr(bounty.buyer)} only (transcript + ${k} traces); board gets the redacted record`);
+  } else {
+    log(`${tag}: transcript discarded, nothing persisted on FAIL`);
   }
   return { outcome, hits, breaksControl, attestTx };
 }
@@ -125,7 +145,7 @@ export function startSettler() {
       for (const row of await sb.listSettleable(before)) {
         try {
           const tx = await txQueue.finalize(BigInt(row.id));
-          console.log(`[settler] commit ${row.id} finalized tx ${tx}`);
+          log(`settler: commit ${row.id} dispute window closed, no dispute → finalize tx ${tx}`);
         } catch (e) { console.log(`[settler] commit ${row.id}: skip (${revertName((e as Error).cause ?? e)})`); }
       }
     } catch (e) { console.log(`[settler] pass failed: ${(e as Error).message}`); }

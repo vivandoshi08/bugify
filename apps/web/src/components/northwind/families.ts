@@ -36,8 +36,8 @@ export type Family = {
   name: string;
   versions: Version[]; // newest first
   tools: string[];
-  latest: Version;
-  openFindings: number; // latest version's PASS count
+  latest: Version; // newest OPEN version if any, else the newest version
+  openFindings: number; // latest (open) version's PASS count
 };
 
 /** Newest first: PR number desc, then bounty id desc (bounty id breaks ties for repeated PRs). */
@@ -70,7 +70,8 @@ export function groupFamilies(bounties: BountyRow[], commits: CommitRow[]): Fami
     versions.sort(newerFirst);
     // "patched": any version newer than a version that has at least one PASS.
     for (let i = 0; i < versions.length; i++) versions[i].patched = versions.slice(i + 1).some((older) => older.passes > 0);
-    const latest = versions[0];
+    // The build that matters is the newest one still under test; closed bounties only count if nothing is open.
+    const latest = versions.find((v) => v.bounty.status === "OPEN") ?? versions[0];
     families.push({
       name, versions, latest,
       tools: toolsFromSummaries(versions.flatMap((v) => v.bounty.invariant_summaries ?? [])),

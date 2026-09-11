@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BAZAAR_ADDRESS, explorerAddress } from "@bugify/sdk";
 import { supabase } from "@/lib/supabase";
 import { shortAddr } from "@/lib/format";
@@ -18,6 +18,34 @@ type Data = { bounties: BountyRow[]; commits: CommitRow[]; events: EventRow[] };
 
 const STATUS_ORDER = { OPEN: 0, VOIDED: 1, CLOSED: 2 } as const;
 const POLL_MS = 3000;
+const isClosed = (b: BountyRow) => b.status === "CLOSED" || b.status === "VOIDED";
+
+// "Show closed" toggle persisted in localStorage (same external-store pattern as HowItWorks, so SSR markup stays stable).
+const SHOW_CLOSED_KEY = "bazaar.showClosed";
+const SHOW_CLOSED_EVT = "bazaar:showClosed";
+const subscribeShowClosed = (cb: () => void) => {
+  window.addEventListener("storage", cb);
+  window.addEventListener(SHOW_CLOSED_EVT, cb);
+  return () => {
+    window.removeEventListener("storage", cb);
+    window.removeEventListener(SHOW_CLOSED_EVT, cb);
+  };
+};
+const readShowClosed = () => {
+  try {
+    return localStorage.getItem(SHOW_CLOSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+const writeShowClosed = (on: boolean) => {
+  try {
+    localStorage.setItem(SHOW_CLOSED_KEY, on ? "1" : "0");
+  } catch {
+    /* private mode etc. — the toggle just won't be remembered */
+  }
+  window.dispatchEvent(new Event(SHOW_CLOSED_EVT));
+};
 
 async function loadAll(): Promise<Data> {
   const [bounties, commits, events] = await Promise.all([fetchBounties(), fetchCommits(), fetchEvents()]);
@@ -29,6 +57,15 @@ export function Board() {
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState<"connecting" | "realtime" | "polling">("connecting");
   const [expanded, setExpanded] = useState<number | null>(null);
+  // CLOSED / VOIDED rows are hidden by default. `storedShowClosed` is the remembered toggle; `forceShowClosed` is a
+  // session-only override set when a deep link targets a closed bounty.
+  const storedShowClosed = useSyncExternalStore(subscribeShowClosed, readShowClosed, () => false);
+  const [forceShowClosed, setForceShowClosed] = useState(false);
+  const showClosed = storedShowClosed || forceShowClosed;
+  const toggleClosed = useCallback(() => {
+    writeShowClosed(!showClosed);
+    setForceShowClosed(false);
+  }, [showClosed]);
   const now = useNow();
 
   const refresh = useCallback(() => {
@@ -83,16 +120,19 @@ export function Board() {
 
   // Deep link: /#bounty-<id> (from the Northwind page) expands that row and scrolls to it once its data is loaded.
   const handledHash = useRef<string | null>(null);
+  const pendingScroll = useRef<number | null>(null);
   useEffect(() => {
     const apply = () => {
       const hash = window.location.hash;
       const m = /^#bounty-(\d+)$/.exec(hash);
       if (!m || handledHash.current === hash) return;
       const id = Number(m[1]);
-      if (!data?.bounties.some((b) => b.id === id)) return;
+      const target = data?.bounties.find((b) => b.id === id);
+      if (!target) return;
       handledHash.current = hash;
+      if (isClosed(target)) setForceShowClosed(true); // a closed bounty must be unhidden before it can be expanded
       setExpanded(id);
-      requestAnimationFrame(() => document.getElementById(`bounty-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+      pendingScroll.current = id;
     };
     const onHashChange = () => {
       handledHash.current = null;
@@ -103,12 +143,24 @@ export function Board() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, [data]);
 
+  // After every render: scroll to the deep-linked row once it exists (it may have been hidden behind the toggle a render ago).
+  useEffect(() => {
+    const id = pendingScroll.current;
+    if (id == null) return;
+    const el = document.getElementById(`bounty-${id}`);
+    if (!el) return;
+    pendingScroll.current = null;
+    requestAnimationFrame(() => el.scrollIntoView({ block: "start", behavior: "smooth" }));
+  });
+
   const sorted = useMemo(() => {
     if (!data) return [];
     return [...data.bounties].sort(
       (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.expiry.localeCompare(b.expiry) || a.id - b.id,
     );
   }, [data]);
+  const closedCount = useMemo(() => sorted.filter(isClosed).length, [sorted]);
+  const visible = useMemo(() => (showClosed ? sorted : sorted.filter((b) => !isClosed(b))), [sorted, showClosed]);
 
   const commitsByBounty = useMemo(() => {
     const m = new Map<number, CommitRow[]>();
@@ -146,56 +198,79 @@ export function Board() {
         </p>
       )}
 
-      {/* Narrow: table → agent console → events. Wide (≥1100px): table + events side by side, console as a full-width row under both. */}
-      <div className="flex flex-col gap-6 min-[1100px]:flex-row min-[1100px]:flex-wrap min-[1100px]:items-start">
-        <main className="order-1 min-w-0 flex-1">
-          {data === null ? (
-            <p className="py-10 text-center text-sm text-zinc-500">Loading…</p>
-          ) : sorted.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-              <table className="w-full min-w-[860px]">
-                <thead>
-                  <tr className="text-[11px] uppercase tracking-wider text-zinc-500">
-                    <th className="px-3 py-2 text-left font-medium">Status</th>
-                    <th className="px-3 py-2 text-left font-medium">Bounty</th>
-                    <th className="px-3 py-2 text-right font-medium">
-                      <Tip text={GLOSSARY.escrow}>Escrow</Tip>
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium">
-                      <Tip text={GLOSSARY.invariants}>Invariants</Tip> · rewards
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium">
-                      <Tip text={GLOSSARY.slots}>Slots</Tip>
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium">
-                      <Tip text={GLOSSARY.commits}>Commits</Tip>
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium">Expires</th>
-                    <th className="px-3 py-2 text-left font-medium">Buyer</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((b) => (
-                    <Row
-                      key={b.id}
-                      bounty={b}
-                      commits={commitsByBounty.get(b.id) ?? []}
-                      now={now}
-                      expanded={expanded === b.id}
-                      onToggle={() => setExpanded((cur) => (cur === b.id ? null : b.id))}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </main>
-        <section className="order-2 w-full min-[1100px]:order-3 min-[1100px]:basis-full">
-          <AgentConsole />
-        </section>
-        <aside className="order-3 w-full shrink-0 min-[1100px]:order-2 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1100px]:sticky min-[1100px]:top-4 min-[1100px]:max-h-[calc(100vh-2rem)] min-[1100px]:w-80 min-[1100px]:overflow-y-auto">
+      {/* Narrow: table → agent console → events. Wide (≥1100px): left column = table then console (the thing people watch),
+          right rail = events, sticky and capped to the viewport so it never stretches the page. */}
+      <div className="flex flex-col gap-6 min-[1100px]:flex-row min-[1100px]:items-start">
+        <div className="flex min-w-0 flex-1 flex-col gap-6">
+          <main className="flex min-w-0 flex-col gap-2">
+            {data === null ? (
+              <p className="py-10 text-center text-sm text-zinc-500">Loading…</p>
+            ) : sorted.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <>
+                {visible.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-zinc-300 bg-white px-6 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900">
+                    No open bounties right now.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                    <table className="w-full min-w-[860px]">
+                      <thead>
+                        <tr className="text-[11px] uppercase tracking-wider text-zinc-500">
+                          <th className="px-3 py-2 text-left font-medium">Status</th>
+                          <th className="px-3 py-2 text-left font-medium">Bounty</th>
+                          <th className="px-3 py-2 text-right font-medium">
+                            <Tip text={GLOSSARY.escrow}>Escrow</Tip>
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium">
+                            <Tip text={GLOSSARY.invariants}>Invariants</Tip> · rewards
+                          </th>
+                          <th className="px-3 py-2 text-left font-medium">
+                            <Tip text={GLOSSARY.slots}>Slots</Tip>
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium">
+                            <Tip text={GLOSSARY.commits}>Commits</Tip>
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium">Expires</th>
+                          <th className="px-3 py-2 text-left font-medium">Buyer</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visible.map((b) => (
+                          <Row
+                            key={b.id}
+                            bounty={b}
+                            commits={commitsByBounty.get(b.id) ?? []}
+                            now={now}
+                            expanded={expanded === b.id}
+                            onToggle={() => setExpanded((cur) => (cur === b.id ? null : b.id))}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {closedCount > 0 && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={toggleClosed}
+                      aria-pressed={showClosed}
+                      className="rounded px-2 py-1 text-[11px] uppercase tracking-wider text-zinc-500 hover:bg-zinc-200/60 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                    >
+                      {showClosed ? "Hide closed" : "Show closed"} ({closedCount})
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </main>
+          <section className="w-full">
+            <AgentConsole />
+          </section>
+        </div>
+        <aside className="w-full shrink-0 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1100px]:sticky min-[1100px]:top-16 min-[1100px]:max-h-[calc(100vh-6rem)] min-[1100px]:w-80 min-[1100px]:overflow-y-auto">
           <EventTicker events={data?.events ?? []} now={now} />
         </aside>
       </div>
