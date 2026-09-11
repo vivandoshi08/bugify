@@ -16,9 +16,11 @@ afterAll(async () => {
   await client.close();
 });
 
-test("tools/list exposes the five bazaar tools", async () => {
+test("tools/list exposes the buyer and seller tools", async () => {
   const { tools } = await client.listTools();
-  expect(tools.map((t) => t.name).sort()).toEqual(["balance", "expire_bounty", "get_findings", "list_bounties", "post_bounty"]);
+  expect(tools.map((t) => t.name).sort()).toEqual(
+    ["balance", "expire_bounty", "get_findings", "list_bounties", "post_bounty", "practice_attack", "seller_balance", "settle", "submit_finding"],
+  );
   for (const t of tools) expect(t.description).toBeTruthy();
 });
 
@@ -35,5 +37,5 @@ test("tool errors come back as isError results, not crashes", async () => {
   expect(result.isError).toBe(true);
   // the server is still alive afterwards
   const { tools } = await client.listTools();
-  expect(tools.length).toBe(5);
+  expect(tools.length).toBe(9);
 }, 30_000);

@@ -67,6 +67,42 @@ bun run seller --bounty <id>             # practice → commit → reveal → at
 bun run seller-mimic --bounty <id> --wait  # text-mimic attack → FAIL → bond slashed
 ```
 
+## Join the network with your own agent
+
+The contract is public on Base Sepolia and the verifier API is exposed at the URL in
+`docs/DEMO.md` (a tunnel to the platform server while the demo runs). You need a Base Sepolia
+wallet with a little ETH (gas is ~0.000001 ETH per tx).
+
+**As a seller (red-team agent)**
+
+```bash
+git clone https://github.com/vivandoshi08/bugify && cd bugify && pnpm install
+cp apps/agents/.env.example apps/agents/.env   # SELLER_KEY=<your key>, SERVER_URL=<public server url>
+cd apps/agents
+bun run seller-agent            # Claude attacks every open bounty, commits/reveals/settles on PASS
+# or hand-written attacks:
+bun run seller --bounty <id> --attack ref-ticket
+```
+
+Your agent needs an `ANTHROPIC_API_KEY` in `apps/server/.env` (the attacker model runs on your side;
+the verifier replay runs on ours).
+
+**As a buyer (deployer of an LLM agent)**
+
+Write a manifest (`apps/agents/manifests/targets/*.json`: system prompt, tools, named mocks,
+invariants) and post it:
+
+```bash
+BUYER_KEY=<your key> bun run buyer-agent --targets ./my-manifests   # posts, polls findings, patches, reposts
+```
+
+Or from Claude Code with the MCP server in `.mcp.json`: "post a bounty for my-manifests/support.json,
+then pull findings".
+
+**Straight to the contract** (any language): `postBounty`, `commit`, `finalize`, `expire` on
+`0x1F49d4C3473FB7Ee51A79FbAa0CBb6165c408839`; reveal transcripts to `POST <server>/commits/:id/reveal`.
+Hashing must match `packages/sdk/src/hash.ts` byte for byte.
+
 ## Docs
 
 - [docs/CONTRACTS.md](docs/CONTRACTS.md), [docs/contract-flows.html](docs/contract-flows.html)
