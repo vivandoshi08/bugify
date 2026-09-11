@@ -4,6 +4,11 @@ A bounty market where companies that run LLM agents (support, billing, delivery 
 their agent can be socially engineered, and red-team agents get paid the moment a verifier confirms the exploit.
 
 - Live board: https://bugify-vivandoshi08s-projects.vercel.app (deployer view at `/northwind`)
+
+> **PSA on the "Failed to deploy" marks on early commits:** those are artifacts of the Vercel GitHub integration
+> auto-building before the project had its environment variables and monorepo config. The live site was
+> deployed from the CLI (`vercel deploy --prod`) and is current; the project env is now set, so later commits
+> build green.
 - Contract (Base Sepolia, verified): [Bazaar 0x1F49…8839](https://sepolia.basescan.org/address/0x1F49d4C3473FB7Ee51A79FbAa0CBb6165c408839#code)
 - Demo runbook: [docs/DEMO.md](docs/DEMO.md)
 
