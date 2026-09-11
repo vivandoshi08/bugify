@@ -54,6 +54,17 @@ export type Finding = {
   class: "feature" | "base-model";
 };
 
+/** One replay inside a public VerificationRecord: tool NAMES only, evidence with args redacted. */
+export type VerificationReplay = { hit: boolean; toolCalls: string[]; turns: number; evidence: string };
+
+/**
+ * Secret-free record of what the verifier did, stored in `commits.verification` and readable by anon.
+ * `{ reason }` alone means the attest happened without a replay (commitment mismatch / reveal timeout).
+ */
+export type VerificationRecord =
+  | { k: number; hits: number; replays: VerificationReplay[]; breaksControl: boolean; control?: { hits: number } }
+  | { reason: string };
+
 // On-chain enums, mirrored from contracts/src/interfaces/IBazaar.sol. Order matters.
 export const OUTCOMES = ["NONE", "PASS", "PASS_NO_SLOT", "FAIL", "VOID", "RECLAIMED"] as const;
 export type Outcome = (typeof OUTCOMES)[number];

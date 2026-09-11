@@ -24,8 +24,9 @@ export function BountyRow({ bounty: b, commits, now, expanded, onToggle }: Props
   return (
     <>
       <tr
+        id={`bounty-${b.id}`}
         onClick={onToggle}
-        className={`cursor-pointer border-t border-zinc-200 text-sm hover:bg-zinc-100/70 dark:border-zinc-800 dark:hover:bg-zinc-800/40 ${expanded ? "bg-zinc-100/50 dark:bg-zinc-800/30" : ""} ${dim}`}
+        className={`scroll-mt-20 cursor-pointer border-t border-zinc-200 text-sm hover:bg-zinc-100/70 dark:border-zinc-800 dark:hover:bg-zinc-800/40 ${expanded ? "bg-zinc-100/50 dark:bg-zinc-800/30" : ""} ${dim}`}
       >
         <td className={cell}>
           <StatusChip status={b.status} />

@@ -32,3 +32,6 @@ contracts/docs/
 # Agent findings (local fixtures)
 apps/agents/redteam/
 !apps/agents/redteam/.gitkeep
+
+# Autonomous agent local state
+apps/agents/.state/

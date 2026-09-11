@@ -1,4 +1,6 @@
 import type { BountyStatus, Outcome } from "@bugify/sdk";
+import { GLOSSARY } from "@/lib/glossary";
+import { Tip } from "@/components/Tip";
 
 const OUTCOME_CLS: Record<Outcome, string> = {
   NONE: "border border-zinc-400 text-zinc-500 dark:border-zinc-600 dark:text-zinc-400",
@@ -11,10 +13,11 @@ const OUTCOME_CLS: Record<Outcome, string> = {
 
 export function OutcomeChip({ outcome }: { outcome: Outcome }) {
   const cls = OUTCOME_CLS[outcome] ?? OUTCOME_CLS.NONE;
+  const tip = GLOSSARY.outcome[outcome] ?? GLOSSARY.outcome.NONE;
   return (
-    <span className={`inline-block rounded px-1.5 py-0.5 font-mono text-[11px] leading-none tracking-wide ${cls}`}>
-      {outcome}
-    </span>
+    <Tip text={tip} plain>
+      <span className={`inline-block cursor-help rounded px-1.5 py-0.5 font-mono text-[11px] leading-none tracking-wide ${cls}`}>{outcome}</span>
+    </Tip>
   );
 }
 

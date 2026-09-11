@@ -123,6 +123,8 @@ export async function indexOnce(): Promise<void> {
     cursor = last = to;
     await sb.setMeta(META_KEY, cursor.toString());
   }
+  // Heartbeat for the board (anon-readable meta key): when the indexer last caught up to the chain head.
+  await sb.setMeta("lastIndexedAt", new Date().toISOString());
 }
 
 export function startIndexer() {

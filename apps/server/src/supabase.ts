@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Manifest } from "@bugify/sdk";
 import { env } from "./env.ts";
+import { invariantSummaries } from "./harness/summaries.ts";
 
 export const db = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
 
@@ -19,6 +20,7 @@ function check<T>(label: string, r: { data: T; error: { message: string } | null
 export async function upsertManifest(hash: string, m: Manifest) {
   check("manifests upsert", await db.from("manifests").upsert({
     hash: lower(hash), name: m.name, model: m.model, body: m, invariant_labels: m.invariants.map((i) => i.label),
+    invariant_summaries: invariantSummaries(m.invariants),
   }));
 }
 export async function getManifest(hash: string): Promise<Manifest | null> {
@@ -42,6 +44,8 @@ export const upsertCommit = async (row: Record<string, unknown> & { id: number }
 export const updateCommit = async (id: number | bigint, patch: Record<string, unknown>) => {
   check("commits update", await db.from("commits").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", Number(id)));
 };
+export const getCommitRow = async (id: number) =>
+  check("commits get", await db.from("commits").select("*").eq("id", id).maybeSingle());
 export const listCommitsForBounty = async (bountyId: number) =>
   check("commits list", await db.from("commits").select("*").eq("bounty_id", bountyId).order("id", { ascending: true })) ?? [];
 /** Attested, undisputed, unfinalized commits whose dispute window closed before `before` (ISO). */
@@ -53,6 +57,8 @@ export const listSettleable = async (before: string) =>
 export const insertFinding = async (row: { commit_id: number; bounty_id: number; buyer: string; transcript: unknown; traces: unknown }) => {
   check("findings upsert", await db.from("findings").upsert({ ...row, buyer: lower(row.buyer) }));
 };
+export const getFinding = async (commitId: number) =>
+  check("findings get", await db.from("findings").select("*").eq("commit_id", commitId).maybeSingle());
 export const listFindings = async (bountyId: number) =>
   check("findings list", await db.from("findings").select("*").eq("bounty_id", bountyId).order("commit_id")) ?? [];
 
@@ -63,3 +69,15 @@ export const upsertEvent = async (row: { name: string; args: unknown; block: num
 export const getMeta = async (key: string): Promise<string | null> =>
   (check("meta get", await db.from("meta").select("value").eq("key", key).maybeSingle()))?.value ?? null;
 export const setMeta = async (key: string, value: string) => { check("meta set", await db.from("meta").upsert({ key, value })); };
+
+// ---- agent_logs (live agent console) ----
+export type AgentLogLevel = "info" | "tx" | "warn";
+export type AgentLogRow = { agent: string; level: AgentLogLevel; line: string; ts?: string };
+export const insertAgentLog = async (row: AgentLogRow) => {
+  check("agent_logs insert", await db.from("agent_logs").insert({ agent: row.agent, level: row.level, line: row.line, ...(row.ts ? { ts: row.ts } : {}) }));
+};
+/** Delete console lines older than `hours` (called once on boot). */
+export const pruneAgentLogs = async (hours = 24) => {
+  const before = new Date(Date.now() - hours * 3600_000).toISOString();
+  check("agent_logs prune", await db.from("agent_logs").delete().lt("ts", before));
+};

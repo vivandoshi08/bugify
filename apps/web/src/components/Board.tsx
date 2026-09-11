@@ -1,13 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BAZAAR_ADDRESS, explorerAddress } from "@bugify/sdk";
 import { supabase } from "@/lib/supabase";
 import { shortAddr } from "@/lib/format";
 import { fetchBounties, fetchCommits, fetchEvents, EVENT_LIMIT, type BountyRow, type CommitRow, type EventRow } from "@/lib/queries";
+import { GLOSSARY } from "@/lib/glossary";
 import { StatsStrip } from "@/components/StatsStrip";
 import { BountyRow as Row } from "@/components/BountyRow";
 import { EventTicker } from "@/components/EventTicker";
+import { AgentConsole } from "@/components/AgentConsole";
+import { HowItWorks } from "@/components/HowItWorks";
+import { Tip } from "@/components/Tip";
 import { useNow } from "@/components/Countdown";
 
 type Data = { bounties: BountyRow[]; commits: CommitRow[]; events: EventRow[] };
@@ -77,6 +81,28 @@ export function Board() {
     };
   }, [refresh]);
 
+  // Deep link: /#bounty-<id> (from the Northwind page) expands that row and scrolls to it once its data is loaded.
+  const handledHash = useRef<string | null>(null);
+  useEffect(() => {
+    const apply = () => {
+      const hash = window.location.hash;
+      const m = /^#bounty-(\d+)$/.exec(hash);
+      if (!m || handledHash.current === hash) return;
+      const id = Number(m[1]);
+      if (!data?.bounties.some((b) => b.id === id)) return;
+      handledHash.current = hash;
+      setExpanded(id);
+      requestAnimationFrame(() => document.getElementById(`bounty-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+    };
+    const onHashChange = () => {
+      handledHash.current = null;
+      apply();
+    };
+    apply();
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [data]);
+
   const sorted = useMemo(() => {
     if (!data) return [];
     return [...data.bounties].sort(
@@ -112,14 +138,17 @@ export function Board() {
         <StatsStrip bounties={data?.bounties ?? []} commits={data?.commits ?? []} events={data?.events ?? []} now={now} />
       </header>
 
+      <HowItWorks />
+
       {error && (
         <p className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
           Failed to load: {error}
         </p>
       )}
 
-      <div className="flex flex-col gap-6 min-[1100px]:flex-row min-[1100px]:items-start">
-        <main className="min-w-0 flex-1">
+      {/* Narrow: table → agent console → events. Wide (≥1100px): table + events side by side, console as a full-width row under both. */}
+      <div className="flex flex-col gap-6 min-[1100px]:flex-row min-[1100px]:flex-wrap min-[1100px]:items-start">
+        <main className="order-1 min-w-0 flex-1">
           {data === null ? (
             <p className="py-10 text-center text-sm text-zinc-500">Loading…</p>
           ) : sorted.length === 0 ? (
@@ -131,10 +160,18 @@ export function Board() {
                   <tr className="text-[11px] uppercase tracking-wider text-zinc-500">
                     <th className="px-3 py-2 text-left font-medium">Status</th>
                     <th className="px-3 py-2 text-left font-medium">Bounty</th>
-                    <th className="px-3 py-2 text-right font-medium">Escrow</th>
-                    <th className="px-3 py-2 text-left font-medium">Invariants · rewards</th>
-                    <th className="px-3 py-2 text-left font-medium">Slots</th>
-                    <th className="px-3 py-2 text-right font-medium">Commits</th>
+                    <th className="px-3 py-2 text-right font-medium">
+                      <Tip text={GLOSSARY.escrow}>Escrow</Tip>
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      <Tip text={GLOSSARY.invariants}>Invariants</Tip> · rewards
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium">
+                      <Tip text={GLOSSARY.slots}>Slots</Tip>
+                    </th>
+                    <th className="px-3 py-2 text-right font-medium">
+                      <Tip text={GLOSSARY.commits}>Commits</Tip>
+                    </th>
                     <th className="px-3 py-2 text-right font-medium">Expires</th>
                     <th className="px-3 py-2 text-left font-medium">Buyer</th>
                   </tr>
@@ -155,7 +192,10 @@ export function Board() {
             </div>
           )}
         </main>
-        <aside className="w-full shrink-0 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1100px]:sticky min-[1100px]:top-4 min-[1100px]:max-h-[calc(100vh-2rem)] min-[1100px]:w-80 min-[1100px]:overflow-y-auto">
+        <section className="order-2 w-full min-[1100px]:order-3 min-[1100px]:basis-full">
+          <AgentConsole />
+        </section>
+        <aside className="order-3 w-full shrink-0 min-[1100px]:order-2 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1100px]:sticky min-[1100px]:top-4 min-[1100px]:max-h-[calc(100vh-2rem)] min-[1100px]:w-80 min-[1100px]:overflow-y-auto">
           <EventTicker events={data?.events ?? []} now={now} />
         </aside>
       </div>

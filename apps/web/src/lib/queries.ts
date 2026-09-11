@@ -1,10 +1,15 @@
-import type { Hex, Outcome, PublicBounty } from "@bugify/sdk";
+import type { Hex, Outcome, PublicBounty, VerificationRecord } from "@bugify/sdk";
 import { supabase } from "@/lib/supabase";
 
 /** Row from the `public_bounties` view (bounties ⋈ manifests). */
 export type BountyRow = PublicBounty & {
   pending: boolean | null;
   block: number | null;
+  /** Row timestamps from the view (bounties.created_at / updated_at). */
+  created_at: string;
+  updated_at: string | null;
+  /** One plain-English, secret-free sentence per invariant (same order as invariant_labels). */
+  invariant_summaries?: string[] | null;
 };
 
 export type DisputeState = "NONE" | "OPEN" | "RESOLVED";
@@ -34,6 +39,8 @@ export type CommitRow = {
   reclaim_tx: string | null;
   paid_wei: string | null;
   commit_tx: string | null;
+  /** Secret-free record written by the verifier at attest time; null for commits attested before it existed. */
+  verification: VerificationRecord | null;
   created_at: string;
 };
 
@@ -74,4 +81,23 @@ export async function fetchEvents(): Promise<EventRow[]> {
     .limit(EVENT_LIMIT);
   if (error) throw error;
   return (data ?? []) as EventRow[];
+}
+
+/** Row from `agent_logs` (live agent console). */
+export type AgentName = "buyer" | "seller" | "verifier";
+export type AgentLogLevel = "info" | "tx" | "warn";
+export type AgentLogRow = { id: number; agent: string; level: AgentLogLevel; line: string; ts: string };
+
+export const AGENT_LOG_LIMIT = 60;
+
+/** Last `AGENT_LOG_LIMIT` lines for one agent, oldest first. */
+export async function fetchAgentLogs(agent: AgentName): Promise<AgentLogRow[]> {
+  const { data, error } = await supabase
+    .from("agent_logs")
+    .select("*")
+    .eq("agent", agent)
+    .order("id", { ascending: false })
+    .limit(AGENT_LOG_LIMIT);
+  if (error) throw error;
+  return ((data ?? []) as AgentLogRow[]).reverse();
 }
