@@ -30,7 +30,11 @@ function describe(args: Record<string, unknown> | null): { ids: string[]; amount
   return { ids, amount };
 }
 
-export function EventTicker({ events, now }: { events: EventRow[]; now: number }) {
+/** Rows rendered in the DOM; state may hold more (EVENT_LIMIT), but the rail only needs the newest few dozen. */
+const RENDER_LIMIT = 40;
+
+export function EventTicker({ events: all, now }: { events: EventRow[]; now: number }) {
+  const events = all.length > RENDER_LIMIT ? all.slice(0, RENDER_LIMIT) : all;
   return (
     <div className="flex flex-col">
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">Events</h2>
