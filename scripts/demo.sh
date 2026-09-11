@@ -38,7 +38,7 @@ start() {
   run server "$ROOT/apps/server" bun --watch src/index.ts
   run web    "$ROOT/apps/web"    pnpm exec next dev -p 3000
   echo "waiting for server…"; for i in $(seq 1 30); do curl -sf localhost:8787/health >/dev/null && break; sleep 1; done
-  if command -v cloudflared >/dev/null; then
+  if [ "${DEMO_TUNNEL:-0}" = "1" ] && command -v cloudflared >/dev/null; then
     run tunnel "$ROOT" cloudflared tunnel --url http://localhost:8787
     for i in $(seq 1 20); do URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOGS/tunnel.log" | grep -v '^https://api\.' | head -1 || true); [ -n "$URL" ] && break; sleep 1; done
     if [ -n "${URL:-}" ]; then
