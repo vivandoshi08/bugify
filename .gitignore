@@ -1,0 +1,30 @@
+# Environment files (only .env.example is committed)
+.env
+.env.*
+!.env.example
+
+# Node / pnpm / Next.js
+node_modules/
+.pnpm-store/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+.turbo/
+.vercel/
+coverage/
+test-results/
+playwright-report/
+.eslintcache
+*.log
+
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/docs/
+!/contracts/lib/
+
+# OS / editor
+.DS_Store
+.idea/

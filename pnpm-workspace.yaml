@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+allowBuilds:
+  '@reown/appkit': false
+  bufferutil: true
+  esbuild: true
+  keccak: true
+  unrs-resolver: true
+  utf-8-validate: true

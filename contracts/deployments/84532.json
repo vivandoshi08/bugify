@@ -1,0 +1,9 @@
+{
+  "chainId": 84532,
+  "smoke": {
+    "Counter": "0x1E3b0Ee23295A446C86D2A16e77175A2361DDe0F",
+    "deployedBy": "0x3Df07C2884655Bef7AF54a4fb07272266352E641",
+    "verified": "https://sepolia.basescan.org/address/0x1E3b0Ee23295A446C86D2A16e77175A2361DDe0F#code",
+    "note": "throwaway Counter from script/Smoke.s.sol, proves deployer + RPC + Basescan verification"
+  }
+}
