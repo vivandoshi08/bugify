@@ -28,3 +28,7 @@ contracts/docs/
 # OS / editor
 .DS_Store
 .idea/
+
+# Agent findings (local fixtures)
+apps/agents/redteam/
+!apps/agents/redteam/.gitkeep
