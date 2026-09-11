@@ -40,7 +40,7 @@ start() {
   echo "waiting for server…"; for i in $(seq 1 30); do curl -sf localhost:8787/health >/dev/null && break; sleep 1; done
   if command -v cloudflared >/dev/null; then
     run tunnel "$ROOT" cloudflared tunnel --url http://localhost:8787
-    for i in $(seq 1 20); do URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOGS/tunnel.log" | head -1); [ -n "$URL" ] && break; sleep 1; done
+    for i in $(seq 1 20); do URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOGS/tunnel.log" | head -1 || true); [ -n "$URL" ] && break; sleep 1; done
     [ -n "${URL:-}" ] && echo "$URL" > "$ROOT/.demo/tunnel.url" && echo "public server url: $URL   (share with external agents as SERVER_URL)"
   fi
   run builder "$ROOT/apps/agents" bun run src/buyer-agent.ts --interval "${BUILDER_INTERVAL:-20}"

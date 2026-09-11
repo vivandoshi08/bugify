@@ -17,7 +17,7 @@ import { RPC_URL, SERVER_URL, BAZAAR_ADDRESS, requireKey, opt, flag, sleep, comp
 import { createAttacker, type AttackHistory, type ToolHint } from "./attacker.ts";
 
 // apps/agents/.env is already loaded by env.ts; add apps/server/.env for ANTHROPIC_API_KEY (no override).
-config({ path: resolve(import.meta.dir, "../../server/.env") });
+config({ path: resolve(import.meta.dir, "../../server/.env"), quiet: true });
 
 // --- CLI ---
 const onlyBounty = opt("bounty");
@@ -40,11 +40,13 @@ async function getEmit() {
   return emitFn;
 }
 async function log(line: string) {
-  console.log(line);
+  // emit() prints to stdout itself; only print here when the shared logger is unavailable.
   try {
-    (await getEmit())?.(line, { agent: "seller" });
+    const emit = await getEmit();
+    if (emit) emit(line, { agent: "seller" });
+    else console.log(line);
   } catch {
-    /* logging must never break the run */
+    console.log(line);
   }
 }
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
