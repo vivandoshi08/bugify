@@ -40,8 +40,16 @@ start() {
   echo "waiting for server…"; for i in $(seq 1 30); do curl -sf localhost:8787/health >/dev/null && break; sleep 1; done
   if command -v cloudflared >/dev/null; then
     run tunnel "$ROOT" cloudflared tunnel --url http://localhost:8787
-    for i in $(seq 1 20); do URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOGS/tunnel.log" | head -1 || true); [ -n "$URL" ] && break; sleep 1; done
-    [ -n "${URL:-}" ] && echo "$URL" > "$ROOT/.demo/tunnel.url" && echo "public server url: $URL   (share with external agents as SERVER_URL)"
+    for i in $(seq 1 20); do URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOGS/tunnel.log" | grep -v '^https://api\.' | head -1 || true); [ -n "$URL" ] && break; sleep 1; done
+    if [ -n "${URL:-}" ]; then
+      echo "$URL" > "$ROOT/.demo/tunnel.url"
+      echo "public server url: $URL   (share with external agents as SERVER_URL)"
+      # Publish it so the public board (Vercel) can find the verifier API at runtime.
+      curl -s -X POST "$SUPABASE_URL/rest/v1/meta" -H "apikey: $SUPABASE_SECRET_KEY" -H "Authorization: Bearer $SUPABASE_SECRET_KEY" \
+        -H "content-type: application/json" -H "Prefer: resolution=merge-duplicates" -d "{\"key\":\"serverUrl\",\"value\":\"$URL\"}" -o /dev/null || true
+    else
+      echo "tunnel: no URL yet (Cloudflare quick-tunnel API slow); external agents can use it once $LOGS/tunnel.log shows one"
+    fi
   fi
   run builder "$ROOT/apps/agents" bun run src/buyer-agent.ts --interval "${BUILDER_INTERVAL:-20}"
   sleep 8   # let the builder post before the finder scans
